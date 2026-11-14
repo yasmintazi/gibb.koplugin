@@ -250,6 +250,14 @@ local cards = {}
 
 function Dashboard:setup()
     self:load(false)
+    -- If the scrapbook look cannot be drawn, reopen once as plain cards so
+    -- there is always a dashboard to use.
+    self.on_paint_fail = function()
+        if not self.plugin.plain_only then
+            self.plugin.plain_only = true
+            self.plugin:showDashboard()
+        end
+    end
 end
 
 function Dashboard:load(light)
@@ -753,7 +761,7 @@ end
 ---------------------------------------------------------------------------
 
 function Dashboard:usePaper()
-    return self.plugin.settings.home_style == "scrapbook"
+    return self.plugin.settings.home_style == "scrapbook" and not self.plugin.plain_only
 end
 
 function Dashboard:isScrapHome()

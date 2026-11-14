@@ -526,16 +526,32 @@ U.GridPaper = GridPaper
 -- Safety net: if drawing this screen ever fails, close it and say so,
 -- instead of letting the error take KOReader down with it.
 local function safePaint(self, bb, x, y)
-    local ok, err = pcall(InputContainer.paintTo, self, bb, x, y)
+    local ok, err = xpcall(function() return InputContainer.paintTo(self, bb, x, y) end, debug.traceback)
     if ok or self.paint_failed then return end
     self.paint_failed = true
+    err = tostring(err)
     require("logger").warn("gibb: drawing failed:", err)
+    -- Keep the first line (what went wrong) and the lines that say where:
+    -- anything in Gibb's own files, plus the widget just above them.
+    local shown, kept = {}, 0
+    for line in err:gmatch("[^\n]+") do
+        local where = line:match("([%w_]+%.lua:%d+)")
+        if #shown == 0 then
+            shown[1] = line
+        elseif where and kept < 7 and not line:find("gibb_ui.lua:%d+: in function <") then
+            local name = line:match("in function '([^']+)'") or line:match("in method '([^']+)'") or ""
+            shown[#shown + 1] = where .. " " .. name
+            kept = kept + 1
+        end
+    end
     UIManager:nextTick(function()
         UIManager:close(self)
         if self.on_close then pcall(self.on_close) end
         UIManager:show(require("ui/widget/infomessage"):new{
-            text = _("Gibb could not draw this screen, so it was closed.") .. "\n\n" .. tostring(err),
+            text = _("Gibb could not draw this screen, so it was closed.") .. "\n\n" .. table.concat(shown, "\n"),
         })
+        -- Let the screen offer a simpler version of itself.
+        if self.on_paint_fail then pcall(self.on_paint_fail) end
     end)
 end
 
