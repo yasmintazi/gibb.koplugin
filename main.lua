@@ -153,10 +153,31 @@ function Plugin:init()
             if not ok then logger.warn("gibb: could not attach to file browser:", err) end
         end
         if self.settings.open_on_start then
-            UIManager:scheduleIn(0.3, function()
-                local ok2, FileManager = pcall(require, "apps/filemanager/filemanager")
-                if ok2 and FileManager.instance == self.ui then self:showDashboard() end
-            end)
+            -- Guard against a crash loop: a note is written to disk before the
+            -- dashboard opens by itself and removed once it has been up for a
+            -- few seconds. If the note is still there at the next start, the
+            -- last attempt took KOReader down, so stay closed this time.
+            if G_reader_settings:isTrue("gibb_autoopen_pending") then
+                G_reader_settings:delSetting("gibb_autoopen_pending")
+                pcall(function() G_reader_settings:flush() end)
+                UIManager:scheduleIn(1, function()
+                    UIManager:show(InfoMessage:new{
+                        text = _("Gibb did not open cleanly last time, so it stayed closed. You can open it from the Tools menu."),
+                    })
+                end)
+            else
+                UIManager:scheduleIn(0.3, function()
+                    local ok2, FileManager = pcall(require, "apps/filemanager/filemanager")
+                    if not (ok2 and FileManager.instance == self.ui) then return end
+                    G_reader_settings:saveSetting("gibb_autoopen_pending", true)
+                    pcall(function() G_reader_settings:flush() end)
+                    self:showDashboard()
+                    UIManager:scheduleIn(4, function()
+                        G_reader_settings:delSetting("gibb_autoopen_pending")
+                        pcall(function() G_reader_settings:flush() end)
+                    end)
+                end)
+            end
         end
     end
 end

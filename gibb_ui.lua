@@ -461,7 +461,25 @@ U.GridPaper = GridPaper
 -- Full-screen page. Subclasses provide buildBody(body_h) and may provide
 -- setup(), pageCount(), navLabel(). self.page is the current page number.
 ---------------------------------------------------------------------------
+
+-- Safety net: if drawing this screen ever fails, close it and say so,
+-- instead of letting the error take KOReader down with it.
+local function safePaint(self, bb, x, y)
+    local ok, err = pcall(InputContainer.paintTo, self, bb, x, y)
+    if ok or self.paint_failed then return end
+    self.paint_failed = true
+    require("logger").warn("gibb: drawing failed:", err)
+    UIManager:nextTick(function()
+        UIManager:close(self)
+        if self.on_close then pcall(self.on_close) end
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = _("Gibb could not draw this screen, so it was closed.") .. "\n\n" .. tostring(err),
+        })
+    end)
+end
+
 local Page = InputContainer:extend{ page = 1, align_top = false, title = nil }
+Page.paintTo = safePaint
 
 function Page:init()
     self.sw, self.sh = Screen:getWidth(), Screen:getHeight()
@@ -605,6 +623,7 @@ U.Page = Page
 -- "bottom". Tapping outside closes it.
 ---------------------------------------------------------------------------
 local Popup = InputContainer:extend{ align = "center", width_ratio = 0.9, modal_close = true }
+Popup.paintTo = safePaint
 
 function Popup:init()
     self.sw, self.sh = Screen:getWidth(), Screen:getHeight()

@@ -930,6 +930,9 @@ function Dashboard:buildScrapbook(body_h)
     -- Whatever height is left goes to a critter on a pile of books and the
     -- covers of what you finished this year.
     local used = vg:getSize().h + gap + (tiles and (tiles:getSize().h + gap) or 0)
+    -- Measuring makes the group remember its layout; forget it again,
+    -- because more is added below. (Skipping this crashed KOReader.)
+    vg:resetLayout()
     local bottom_h = math.max(scale(84), math.min(scale(210), body_h - scale(20) - used))
     local critter_w = math.floor(W * 0.36)
     local sitter
@@ -1547,6 +1550,7 @@ function Library:buildShelves(vg, full_w)
             index = index + 1
         end
         local row_w = row:getSize().w
+        row:resetLayout()  -- same reason as on the scrapbook page
         if critter and shelf % 2 == 0 then
             local free = full_w - row_w - critter:getSize().w
             table.insert(row, HorizontalSpan:new{ width = math.max(self.gap, free) })
