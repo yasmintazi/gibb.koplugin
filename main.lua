@@ -427,6 +427,34 @@ function Plugin:findOther(folder, method)
     return ok and instance or nil
 end
 
+-- The Assistant plugin, if it is running and set up.
+function Plugin:hasAI()
+    local assistant = self:findOther("assistant", "onAskAIQuestion")
+    return assistant ~= nil and assistant.assistant_dialog ~= nil
+end
+
+-- Hands a piece of text to the Assistant's ask dialog, the same way its own
+-- highlight-menu button does.
+function Plugin:askAI(text)
+    local assistant = self:findOther("assistant", "onAskAIQuestion")
+    if not assistant then return false end
+    local ok, err = pcall(function()
+        if assistant.isConfigured and not assistant:isConfigured() then return end
+        require("ui/network/manager"):runWhenOnline(function()
+            UIManager:nextTick(function()
+                if assistant.assistant_dialog then
+                    assistant.assistant_dialog:showAskDialog(text)
+                end
+            end)
+        end)
+    end)
+    if not ok then
+        logger.warn("gibb: Ask AI failed:", err)
+        UIManager:show(InfoMessage:new{ text = _("Could not open the AI assistant:") .. "\n" .. tostring(err) })
+    end
+    return ok
+end
+
 function Plugin:launch(app)
     local ui = self.ui
     local hook = APP_HOOKS[app]

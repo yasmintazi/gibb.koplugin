@@ -33,6 +33,7 @@ local U = {
     symbols = true,     -- set from settings: show the little hearts and flowers
     cats = true,        -- set from settings: paws, whiskers and fish
     critters = true,    -- set from settings: show the photo critters
+    scrap = false,      -- set briefly while a scrapbook-style page is built
     compact = false,    -- set briefly by a page that is short of room
     plugin_dir = nil,   -- set by main.lua
     BLACK = Blitbuffer.COLOR_BLACK,
@@ -147,6 +148,26 @@ end
 -- Rounded, outlined card with an optional centred title.
 function U.card(title, content, inner_w, o)
     o = o or {}
+    if U.scrap then
+        -- Scrapbook look: a small grey label in the corner, like a note.
+        local label = title and tostring(title) or nil
+        if label then
+            local sym, rest = label:match("^(%S+) (.+)$")
+            if sym and CAT_ICONS[sym] then label = rest end
+        end
+        local note = VerticalGroup:new{ align = "left" }
+        if label then
+            table.insert(note, U.splitRow(U.text(label:upper(), 10, { color = U.GRAY, max_width = inner_w }), nil, inner_w))
+            table.insert(note, U.vspan(3))
+        end
+        table.insert(note, U.centered(content, inner_w))
+        local pad = (o.slim and scale(4)) or (U.compact and scale(5)) or scale(7)
+        return FrameContainer:new{
+            radius = scale(10), bordersize = U.BORDER, padding = U.PAD,
+            padding_top = pad, padding_bottom = pad, margin = 0, background = U.WHITE,
+            note,
+        }
+    end
     local vg = VerticalGroup:new{ align = "center" }
     if title then
         table.insert(vg, U.heading(title, U.compact and 14 or 15, { bold = true, max_width = inner_w }))
@@ -353,6 +374,46 @@ function Moon:paintTo(bb, x, y)
     end
 end
 U.Moon = Moon
+
+-- A progress ring: a grey circle with a black arc that starts at the top
+-- and runs clockwise, and a label (such as "39%") in the middle.
+local Ring = Widget:extend{ size = 60, thickness = nil, fraction = 0, label = nil }
+function Ring:getSize() return Geom:new{ w = self.size, h = self.size } end
+function Ring:paintTo(bb, x, y)
+    local d = self.size
+    local r_out = d / 2
+    local thick = self.thickness or math.max(3, math.floor(d * 0.13))
+    local r_in = r_out - thick
+    local frac = math.max(0, math.min(1, tonumber(self.fraction) or 0))
+    local limit = frac * 2 * math.pi
+    for py = 0, d - 1 do
+        local dy = py + 0.5 - r_out
+        local run_x, run_c
+        for px = 0, d - 1 do
+            local dx = px + 0.5 - r_out
+            local dist2 = dx * dx + dy * dy
+            local c
+            if dist2 <= r_out * r_out and dist2 >= r_in * r_in then
+                local angle = math.atan2(dx, -dy)
+                if angle < 0 then angle = angle + 2 * math.pi end
+                c = (frac > 0 and angle <= limit) and U.BLACK or U.LIGHT
+            end
+            -- Paint in runs of the same shade, not pixel by pixel.
+            if c ~= run_c then
+                if run_c then bb:paintRect(x + run_x, y + py, px - run_x, 1, run_c) end
+                run_x, run_c = px, c
+            end
+        end
+        if run_c then bb:paintRect(x + run_x, y + py, d - run_x, 1, run_c) end
+    end
+    if self.label then
+        local text = TextWidget:new{ text = self.label, face = U.face(self.label_size or 13), bold = true }
+        local size = text:getSize()
+        text:paintTo(bb, x + math.floor((d - size.w) / 2), y + math.floor((d - size.h) / 2))
+        text:free()
+    end
+end
+U.Ring = Ring
 
 -- One vertical bar of the weekly chart.
 local VBar = Widget:extend{ w = 20, h = 80, fraction = 0, color = nil }

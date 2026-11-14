@@ -185,6 +185,13 @@ function HighlightView:build(w)
         })
     end
     table.insert(vg, U.vspan(12))
+    if self.plugin:hasAI() then
+        table.insert(vg, U.pill(_("Ask AI about this"), function()
+            self:onClose()
+            self.plugin:askAI(item.text)
+        end, { w = w, padv = 7 }))
+        table.insert(vg, U.vspan(6))
+    end
     local gap = scale(6)
     local bw = math.floor((w - 2 * gap) / 3)
     table.insert(vg, HorizontalGroup:new{
@@ -320,7 +327,7 @@ local DENSITIES = {
 }
 
 function Dashboard:buildBody(body_h)
-    if self:usePaper() then
+    if self:isScrapHome() then
         local ok, built = pcall(self.buildScrapbook, self, body_h)
         if ok and built then return built end
         -- Fall back to the plain cards rather than show a broken page.
@@ -333,8 +340,10 @@ function Dashboard:buildBody(body_h)
         if vg and vg.free then vg:free() end
         self.compact = DENSITIES[level].compact
         U.compact = self.compact
+        U.scrap = self:usePaper()
         local ok, built = pcall(self.buildCards, self, DENSITIES[level].gap)
         U.compact = false
+        U.scrap = false
         if not ok then error(built, 0) end
         vg = built
         -- Remember what fitted, so redrawing this page does not start over.
@@ -744,7 +753,11 @@ end
 ---------------------------------------------------------------------------
 
 function Dashboard:usePaper()
-    return self.plugin.settings.home_style == "scrapbook" and self.pages[self.page] == 1
+    return self.plugin.settings.home_style == "scrapbook"
+end
+
+function Dashboard:isScrapHome()
+    return self:usePaper() and self.pages[self.page] == 1
 end
 
 -- A small note: a tiny grey label (and an optional widget on its right)
@@ -818,7 +831,7 @@ function Dashboard:buildScrapbook(body_h)
         end
     end, { size = 11, padv = 1, padh = 7 }) or nil
     local quote_card = note(_("QUOTE OF THE DAY"), quote, quote_inner, another)
-    local stamp_h = math.max(quote_card:getSize().h, scale(70))
+    local stamp_h = math.max(quote_card:getSize().h, math.floor(stamp_w * 1.2))
     local stamp_iw, stamp_ih = stamp_w - 2 * U.BORDER, stamp_h - 2 * U.BORDER
     local picture
     if files[1] then
@@ -836,12 +849,6 @@ function Dashboard:buildScrapbook(body_h)
     if s then
         local half = math.floor((W - gap) / 2)
         local hi = half - 2 * edge
-        local today = VerticalGroup:new{
-            align = "left",
-            U.text(string.format(_("%d pages"), s.today_pages), 15, { bold = true, max_width = hi }),
-            U.text(string.format(_("%s read"), U.duration(s.today_time)), 11, { color = U.GRAY, max_width = hi }),
-            U.text(string.format(_("Streak %d days"), s.streak), 11, { color = U.GRAY, max_width = hi }),
-        }
         local col = math.floor(hi / 3)
         local function small(value, label)
             return U.centered(VerticalGroup:new{
@@ -850,6 +857,12 @@ function Dashboard:buildScrapbook(body_h)
                 U.text(label, 11, { color = U.GRAY, max_width = col }),
             }, col)
         end
+        local today = HorizontalGroup:new{
+            align = "top",
+            small(s.today_pages, _("pages")),
+            small(shortTime(s.today_time), _("read")),
+            small(s.streak, _("day streak")),
+        }
         local month = HorizontalGroup:new{
             align = "top",
             small(data.month_books or 0, _("books")),
@@ -883,40 +896,40 @@ function Dashboard:buildScrapbook(body_h)
             when = os.time() + math.ceil(remaining / daily) * 86400
             line2 = percent .. " · " .. string.format(_("at %s a day"), U.duration(daily))
         end
-        local cover_h = scale(58)
-        local cover_w = math.floor(cover_h / 1.4)
-        local box_w = scale(46)
-        local text_w = fi - cover_w - box_w - scale(20)
+        local cover_h = scale(104)
+        local cover_w = math.floor(cover_h / 1.45)
+        local ring_d = scale(62)
+        local play_d = scale(50)
+        local text_w = fi - cover_w - ring_d - play_d - scale(36)
         local lines = VerticalGroup:new{
             align = "left",
-            U.text(e.title, 14, { bold = true, max_width = text_w }),
-            U.text(line2, 11, { color = U.GRAY, max_width = text_w }),
+            U.textbox(e.title, 16, text_w, { bold = true, max_height = scale(46) }),
         }
-        local done = data.counts.finished_year or 0
-        if done > 0 then
-            local pace = math.floor(done / math.max(1, tonumber(os.date("%j"))) * 365 + 0.5)
-            table.insert(lines, U.text(string.format(_("On pace for %d books this year"), pace), 11, { color = U.GRAY, max_width = text_w }))
-        elseif not when then
+        if e.authors ~= "" then
+            table.insert(lines, U.text(e.authors, 12, { color = U.GRAY, max_width = text_w }))
+        end
+        table.insert(lines, U.vspan(4))
+        if when then
+            local day = tonumber(os.date("%d", when)) .. " " .. os.date("%b", when)
+            table.insert(lines, U.text(string.format(_("Finish around %s"), day), 11, { color = U.GRAY, max_width = text_w }))
+            table.insert(lines, U.text(string.format(_("at %s a day"), U.duration(daily)), 11, { color = U.GRAY, max_width = text_w }))
+        else
             table.insert(lines, U.text(_("Read a little more for a forecast"), 11, { color = U.GRAY, max_width = text_w }))
         end
-        local datebox = FrameContainer:new{
-            radius = scale(6), bordersize = U.BORDER, padding = 0, margin = 0, background = U.WHITE,
-            VerticalGroup:new{
-                align = "center",
-                FrameContainer:new{
-                    bordersize = 0, padding = scale(1), margin = 0, background = U.BLACK,
-                    U.centered(U.text(when and os.date("%b", when):upper() or "···", 10, { bold = true, color = U.WHITE }), box_w - scale(2)),
-                },
-                U.centered(U.text(when and tostring(tonumber(os.date("%d", when))) or "?", 18, { bold = true }), box_w),
-            },
+        local controls = HorizontalGroup:new{
+            align = "center",
+            U.Ring:new{ size = ring_d, fraction = e.percent, label = percent },
+            U.hspan(10),
+            U.icon("play", play_d),
         }
         local row = HorizontalGroup:new{
             align = "center",
-            U.centered(U.cover(e.file, cover_w, cover_h), cover_w, cover_h),
+            U.centered(U.cover(e.file, cover_w, cover_h, e.title), cover_w, cover_h),
             U.hspan(10),
-            U.splitRow(lines, datebox, fi - cover_w - scale(10)),
+            U.splitRow(lines, controls, fi - cover_w - scale(10)),
         }
-        add(U.tap(note(_("FINISH FORECAST"), row, fi), function() plugin:openBook(e.file) end,
+        -- Tap anywhere on the note to carry on reading; hold for the book's page.
+        add(U.tap(note(_("CONTINUE READING"), row, fi), function() plugin:openBook(e.file) end,
             function() plugin:showBookPage(e.file) end))
     end
 
@@ -933,7 +946,7 @@ function Dashboard:buildScrapbook(body_h)
     -- Measuring makes the group remember its layout; forget it again,
     -- because more is added below. (Skipping this crashed KOReader.)
     vg:resetLayout()
-    local bottom_h = math.max(scale(84), math.min(scale(210), body_h - scale(20) - used))
+    local bottom_h = math.max(scale(110), math.min(scale(340), body_h - scale(20) - used))
     local critter_w = math.floor(W * 0.36)
     local sitter
     local sitter_file = files[2] or files[1]
@@ -958,10 +971,28 @@ function Dashboard:buildScrapbook(body_h)
         book(math.floor(critter_w * 0.66), U.GRAY),
     }
     local covers_inner = W - critter_w - gap - 2 * edge
+    local moon = data.moon
+    local moon_when
+    if moon.to_full == 0 then moon_when = _("full moon tonight")
+    elseif moon.to_full == 1 then moon_when = _("full moon tomorrow")
+    else moon_when = string.format(_("full moon in %d days"), moon.to_full) end
+    local moon_r = scale(15)
+    local moon_text_w = covers_inner - 2 * moon_r - scale(10)
+    local moon_note = note(_("MOON"), HorizontalGroup:new{
+        align = "center",
+        U.Moon:new{ radius = moon_r, phase = moon.phase },
+        U.hspan(10),
+        VerticalGroup:new{
+            align = "left",
+            U.text(_(moon.name), 13, { bold = true, max_width = moon_text_w }),
+            U.text(string.format(_("%d%% lit"), moon.lit) .. " · " .. moon_when, 11, { color = U.GRAY, max_width = moon_text_w }),
+        },
+    }, covers_inner)
+    local moon_h = moon_note:getSize().h + gap
     local finished = data.year_covers or {}
     local covers
     if #finished > 0 then
-        local ch = math.max(scale(40), math.min(scale(84), bottom_h - scale(46)))
+        local ch = math.max(scale(40), math.min(scale(96), bottom_h - scale(46) - moon_h))
         local cw = math.floor(ch / 1.45)
         local cgap = scale(4)
         local n = math.max(1, math.floor((covers_inner + cgap) / (cw + cgap)))
@@ -981,7 +1012,7 @@ function Dashboard:buildScrapbook(body_h)
         align = "bottom",
         U.centered(pile, critter_w),
         HorizontalSpan:new{ width = gap },
-        year_note,
+        VerticalGroup:new{ align = "left", moon_note, VerticalSpan:new{ width = gap }, year_note },
     })
     if tiles then add(tiles) end
     return vg
