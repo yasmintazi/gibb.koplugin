@@ -398,7 +398,8 @@ function cards.header(self, iw)
         end
         return HorizontalGroup:new{
             align = "bottom",
-            side(files[2] or files[1]),
+            -- Tapping the cat on the left opens the library.
+            U.tap(side(files[2] or files[1]), function() self.plugin:showLibrary() end),
             HorizontalSpan:new{ width = scale(8) },
             U.centered(words, text_w, critter_h),
             HorizontalSpan:new{ width = scale(8) },
@@ -1018,7 +1019,8 @@ function Dashboard:buildScrapbook(body_h)
         U.text(string.format(_("%d finished"), #finished), 11, { color = U.GRAY }))
     add(HorizontalGroup:new{
         align = "bottom",
-        U.centered(pile, critter_w),
+        -- Tapping the cat on its pile of books opens the library.
+        U.tap(U.centered(pile, critter_w), function() plugin:showLibrary() end),
         HorizontalSpan:new{ width = gap },
         VerticalGroup:new{ align = "left", moon_note, VerticalSpan:new{ width = gap }, year_note },
     })
