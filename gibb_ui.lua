@@ -128,6 +128,9 @@ function U.card(title, content, inner_w, o)
         radius = scale(12),
         bordersize = U.BORDER,
         padding = U.PAD,
+        -- o.slim: less space above and below, for one-line cards.
+        padding_top = o.slim and scale(4) or nil,
+        padding_bottom = o.slim and scale(4) or nil,
         margin = 0,
         background = U.WHITE,
         U.centered(vg, inner_w),

@@ -91,6 +91,12 @@ function Plugin:loadSettings()
         settings.open_on_start = true
         settings.version = 2
     end
+    -- The Home page was rearranged (Continue reading added, highlights
+    -- moved onto it), so start once from the new default order.
+    if settings.version < 3 then
+        settings.order = nil
+        settings.version = 3
+    end
     fill(settings, defaults())
     -- Keep the card order valid when cards are added in a newer version.
     local known, seen, order = {}, {}, {}

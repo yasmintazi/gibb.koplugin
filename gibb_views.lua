@@ -208,7 +208,9 @@ V.HighlightView = HighlightView
 
 V.CARDS = {
     { id = "header",    page = 1, label = _("Greeting") },
+    { id = "resume",    page = 1, label = _("Continue reading") },
     { id = "books",     page = 1, label = _("Currently reading") },
+    { id = "highlight", page = 1, label = _("From your highlights") },
     { id = "moon",      page = 1, label = _("Moon phase") },
     { id = "today",     page = 1, label = _("Today and daily goal") },
     { id = "apps",      page = 1, label = _("App tiles") },
@@ -216,7 +218,6 @@ V.CARDS = {
     { id = "library",   page = 2, label = _("Library") },
     { id = "authors",   page = 2, label = _("Authors on your shelf") },
     { id = "genres",    page = 2, label = _("Genres") },
-    { id = "highlight", page = 3, label = _("From your highlights") },
     { id = "reviews",   page = 3, label = _("Your reviews") },
     { id = "week",      page = 4, label = _("This week") },
     { id = "totals",    page = 4, label = _("All time") },
@@ -330,28 +331,58 @@ function cards.books(self, iw)
         return U.card(U.deco("✿", _("Currently reading")),
             U.text(_("No books in progress yet"), 14, { color = U.GRAY }), iw)
     end
+    -- Kept small so the Home page has room for other cards.
     local gap = scale(10)
     local item_w = math.floor((iw - (n - 1) * gap) / n)
-    local cover_h = math.min(math.floor(item_w * 1.45), math.floor(self.sh * 0.19))
+    local cover_h = math.min(math.floor(item_w * 1.45), math.floor(self.sh * 0.115))
     local hg = HorizontalGroup:new{ align = "top" }
     for i = 1, math.min(n, #list) do
         local e = list[i]
         local vg = VerticalGroup:new{
             align = "center",
             U.centered(U.cover(e.file, item_w, cover_h), item_w, cover_h),
-            U.vspan(3),
-            U.text(e.title, 13, { bold = true, max_width = item_w }),
+            U.vspan(2),
+            U.text(e.title, 12, { bold = true, max_width = item_w }),
+            U.vspan(2),
+            U.progress(math.floor(item_w * 0.8), scale(6), e.percent),
         }
-        if e.authors ~= "" then table.insert(vg, U.text(e.authors, 11, { color = U.GRAY, max_width = item_w })) end
-        table.insert(vg, U.vspan(2))
-        table.insert(vg, U.progress(item_w, scale(7), e.percent))
-        table.insert(vg, U.text(math.floor(e.percent * 100 + 0.5) .. "%", 11, { color = U.GRAY }))
         if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
+        -- Tap shows the book's page; hold opens the book.
         table.insert(hg, U.tap(U.centered(vg, item_w),
             function() self.plugin:showBookPage(e.file) end,
             function() self.plugin:openBook(e.file) end))
     end
     return U.card(U.deco("✿", _("Currently reading")), hg, iw)
+end
+
+-- The book you had open last. Tapping anywhere on the card opens it.
+function cards.resume(self, iw)
+    local e = self.data.reading[1]
+    if not e then return nil end
+    local cover_h = scale(58)
+    local cover_w = math.floor(cover_h / 1.4)
+    local text_w = iw - cover_w - scale(10)
+    local percent = math.floor(e.percent * 100 + 0.5) .. "%"
+    local bar_w = text_w - scale(44)
+    local lines = VerticalGroup:new{
+        align = "left",
+        U.text(U.deco("♥", _("Continue reading")), 12, { color = U.GRAY, max_width = text_w }),
+        U.text(e.title, 15, { bold = true, max_width = text_w }),
+        U.vspan(3),
+        HorizontalGroup:new{
+            align = "center",
+            U.progress(bar_w, scale(7), e.percent),
+            U.hspan(8),
+            U.text(percent, 12, { color = U.GRAY }),
+        },
+    }
+    local row = HorizontalGroup:new{
+        align = "center",
+        U.centered(U.cover(e.file, cover_w, cover_h), cover_w, cover_h),
+        U.hspan(10),
+        U.splitRow(lines, nil, text_w),
+    }
+    return U.tap(U.card(nil, row, iw), function() self.plugin:openBook(e.file) end)
 end
 
 function cards.moon(self, iw)
@@ -360,18 +391,18 @@ function cards.moon(self, iw)
     if moon.to_full == 0 then when = _("full moon tonight")
     elseif moon.to_full == 1 then when = _("full moon tomorrow")
     else when = string.format(_("full moon in %d days"), moon.to_full) end
-    local r = scale(24)
-    local text_w = iw - 2 * r - scale(12)
+    -- One slim line: a small moon, its name, then the details.
+    local r = scale(13)
+    local name = U.text(_(moon.name), 13, { bold = true, max_width = math.floor(iw * 0.45) })
+    local detail_w = iw - 2 * r - name:getSize().w - scale(18)
     return U.card(nil, HorizontalGroup:new{
         align = "center",
         U.Moon:new{ radius = r, phase = moon.phase },
-        U.hspan(12),
-        VerticalGroup:new{
-            align = "left",
-            U.text(_(moon.name), 15, { bold = true, max_width = text_w }),
-            U.text(string.format(_("%d%% lit"), moon.lit) .. " · " .. when, 12, { color = U.GRAY, max_width = text_w }),
-        },
-    }, iw)
+        U.hspan(8),
+        name,
+        U.hspan(8),
+        U.text(string.format(_("%d%% lit"), moon.lit) .. " · " .. when, 12, { color = U.GRAY, max_width = detail_w }),
+    }, iw, { slim = true })
 end
 
 local function noStats(title, iw)
@@ -515,16 +546,17 @@ function cards.highlight(self, iw)
     end
     local source = item.title or ""
     if item.authors and item.authors ~= "" then source = source .. " · " .. item.authors end
-    local quote = U.tap(U.textbox("“" .. item.text .. "”", 15, iw, {
-        align = "center", max_height = math.floor(self.sh * 0.22),
+    -- A few lines only; tapping the quote shows it in full.
+    local quote = U.tap(U.textbox("“" .. item.text .. "”", 14, iw, {
+        align = "center", max_height = math.floor(self.sh * 0.085),
     }), function() self.plugin:showHighlight(item) end)
     local gap = scale(8)
     return U.card(title, VerticalGroup:new{
         align = "center",
         quote,
-        U.vspan(4),
+        U.vspan(3),
         U.text(source, 12, { color = U.GRAY, max_width = iw }),
-        U.vspan(8),
+        U.vspan(5),
         HorizontalGroup:new{
             align = "center",
             U.pill(_("Another"), function()
@@ -534,9 +566,9 @@ function cards.highlight(self, iw)
                     self.plugin:save()
                     self:refresh()
                 end
-            end, { padv = 3 }),
+            end, { padv = 2, size = 12 }),
             HorizontalSpan:new{ width = gap },
-            U.pill(_("All highlights"), function() self.plugin:showHighlights() end, { padv = 3 }),
+            U.pill(_("All highlights"), function() self.plugin:showHighlights() end, { padv = 2, size = 12 }),
         },
     }, iw)
 end
@@ -1103,8 +1135,60 @@ function Highlights:setup()
     if not D.index then D.getIndex(ui, self.plugin.settings) end
     self.this_file = self.file or (ui.document and ui.document.file)
     self.filter = self.file and "book" or "all"
-    self.per_page = math.max(2, math.floor((self.sh - scale(150)) / scale(150)))
     self:apply()
+end
+
+function Highlights:makeCard(h, iw)
+    local meta = { h.title }
+    if h.chapter and h.chapter ~= "" then meta[#meta + 1] = h.chapter end
+    if h.datetime then meta[#meta + 1] = U.shortDate(h.datetime) end
+    local inner = VerticalGroup:new{
+        align = "left",
+        U.textbox("“" .. h.text .. "”", 14, iw, { max_height = scale(88) }),
+        U.vspan(3),
+        U.text(table.concat(meta, " · "), 11, { color = U.GRAY, max_width = iw }),
+    }
+    if type(h.note) == "string" and h.note ~= "" then
+        table.insert(inner, U.text(_("Note: ") .. (h.note:gsub("%s+", " ")), 12, { max_width = iw }))
+    end
+    return U.tap(U.card(nil, inner, iw, { slim = true }), function() self.plugin:showHighlight(h) end)
+end
+
+-- Highlights differ a lot in length, so a page is not a fixed number of
+-- them: cards are added until the screen is full. page_starts remembers
+-- where each page begins, filled in as you page forward.
+function Highlights:layoutPage()
+    local iw = self:cardWidth()
+    local gap = scale(8)
+    local budget = self.sh - scale(152)
+    local i = self.page_starts[self.page] or 1
+    local widgets, used = {}, 0
+    while i <= #self.list do
+        local card = self:makeCard(self.list[i], iw)
+        local h = card:getSize().h + (#widgets > 0 and gap or 0)
+        if #widgets > 0 and used + h > budget then
+            card:free()
+            break
+        end
+        widgets[#widgets + 1] = card
+        used = used + h
+        i = i + 1
+    end
+    self.page_widgets = widgets
+    if i <= #self.list then
+        self.page_starts[self.page + 1] = i
+    else
+        self.last_page = self.page
+    end
+end
+
+function Highlights:refresh()
+    local ok, err = pcall(self.layoutPage, self)
+    if not ok then
+        require("logger").warn("gibb: highlights layout failed:", err)
+        self.page_widgets = {}
+    end
+    U.Page.refresh(self)
 end
 
 function Highlights:apply()
@@ -1120,14 +1204,21 @@ function Highlights:apply()
     end
     self.list = list
     self.page = 1
+    self.page_starts = { 1 }
+    self.last_page = nil
 end
 
+-- The true total is only known once the last page has been reached; until
+-- then this is "the pages seen so far, plus one more".
 function Highlights:pageCount()
-    return math.max(1, math.ceil(#(self.list or {}) / self.per_page))
+    return self.last_page or math.max(1, #(self.page_starts or {}))
 end
 
 function Highlights:navLabel()
-    return string.format(_("%d of %d · %d highlights"), self.page, self:pageCount(), #self.list)
+    if self.last_page then
+        return string.format(_("Page %d of %d · %d highlights"), self.page, self.last_page, #self.list)
+    end
+    return string.format(_("Page %d · %d highlights"), self.page, #self.list)
 end
 
 function Highlights:buildBody()
@@ -1154,23 +1245,9 @@ function Highlights:buildBody()
         table.insert(vg, U.text(_("No highlights here yet"), 14, { color = U.GRAY }))
         return vg
     end
-    local first = (self.page - 1) * self.per_page + 1
-    for i = first, math.min(#self.list, first + self.per_page - 1) do
-        local h = self.list[i]
-        local meta = { h.title }
-        if h.chapter and h.chapter ~= "" then meta[#meta + 1] = h.chapter end
-        if h.datetime then meta[#meta + 1] = U.shortDate(h.datetime) end
-        local inner = VerticalGroup:new{
-            align = "left",
-            U.textbox("“" .. h.text .. "”", 14, iw, { max_height = scale(66) }),
-            U.vspan(3),
-            U.text(table.concat(meta, " · "), 11, { color = U.GRAY, max_width = iw }),
-        }
-        if type(h.note) == "string" and h.note ~= "" then
-            table.insert(inner, U.text(_("Note: ") .. (h.note:gsub("%s+", " ")), 12, { max_width = iw }))
-        end
-        if i > first then table.insert(vg, U.vspan(8)) end
-        table.insert(vg, U.tap(U.card(nil, inner, iw), function() self.plugin:showHighlight(h) end))
+    for i = 1, #(self.page_widgets or {}) do
+        if i > 1 then table.insert(vg, U.vspan(8)) end
+        table.insert(vg, self.page_widgets[i])
     end
     return vg
 end

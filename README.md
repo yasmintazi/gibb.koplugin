@@ -17,12 +17,12 @@ the files land in koreader/screenshots/. -->
 
 **Dashboard**, four pages you swipe between:
 
-- **Home**: a greeting, the books you're reading with their progress, the moon
+- **Home**: a greeting, a Continue reading card for your last book, the books
+  you're reading, a highlight picked from across your books each day, the moon
   phase, today's pages against your daily goal, and tiles for other plugins.
 - **Shelf**: how many books you're reading, have finished or put on hold, a
   strip of recently added books, the authors on your shelf, and your genres.
-- **Notes**: a highlight picked from across your books each day, and your
-  reviews.
+- **Notes**: your ratings and reviews.
 - **Stats**: pages per day this week, all-time totals, streaks, and a yearly
   book goal.
 
@@ -121,6 +121,7 @@ can turn it back on in Plugin management.
 | Open the reader menu | Tap the bottom of a page |
 | Reach KOReader's text settings | Swipe up from the bottom, or **Text style** in the reader menu |
 | Reach KOReader's full menu | **More** in the quick panel |
+| Carry on with your last book | Tap the **Continue reading** card on the Home page |
 | See a book's page | Tap a book on the dashboard or in the library |
 | Open a book directly | Hold a book on the dashboard or in the library |
 
