@@ -24,6 +24,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Widget = require("ui/widget/widget")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
 local Screen = Device.screen
@@ -31,6 +32,7 @@ local Screen = Device.screen
 local U = {
     symbols = true,     -- set from settings: show the little hearts and flowers
     cats = true,        -- set from settings: paws, whiskers and fish
+    critters = true,    -- set from settings: show the photo critters
     compact = false,    -- set briefly by a page that is short of room
     plugin_dir = nil,   -- set by main.lua
     BLACK = Blitbuffer.COLOR_BLACK,
@@ -256,6 +258,27 @@ function U.iconTile(o)
     return U.tap(box, o.callback, o.hold_callback)
 end
 
+-- Critters: your own cut-out pictures, kept as PNG files in the plugin's
+-- "critters" folder. Any PNG dropped in there is picked up, in name order.
+function U.critterFiles()
+    if U._critters then return U._critters end
+    local found = {}
+    local dir = U.plugin_dir and (U.plugin_dir .. "/critters")
+    if dir and lfs.attributes(dir, "mode") == "directory" then
+        for name in lfs.dir(dir) do
+            if name:lower():match("%.png$") then found[#found + 1] = dir .. "/" .. name end
+        end
+        table.sort(found)
+    end
+    U._critters = found
+    return found
+end
+
+-- One critter, scaled to fit a box of the given height (and width).
+function U.critter(path, h, w)
+    return ImageWidget:new{ file = path, width = w or h, height = h, scale_factor = 0, alpha = true }
+end
+
 -- A big number with a small grey label under it.
 function U.stat(value, label, w)
     local vg = VerticalGroup:new{
@@ -348,7 +371,8 @@ function Rule:paintTo(bb, x, y) bb:paintRect(x, y, self.w, self.h, self.color or
 U.Rule = Rule
 
 -- Book cover from KOReader's cover cache, or a little placeholder.
-function U.cover(file, w, h)
+-- title (optional): shown on the placeholder when the book has no cover.
+function U.cover(file, w, h, title)
     local border = scale(1)
     local ok, BookInfoManager = pcall(require, "bookinfomanager")
     if ok and type(BookInfoManager) == "table" and file then
@@ -369,7 +393,8 @@ function U.cover(file, w, h)
         radius = scale(6), bordersize = border, padding = 0, margin = 0, background = U.WHITE,
         CenterContainer:new{
             dimen = Geom:new{ w = w - 2 * border, h = h - 2 * border },
-            (U.cats and U.icon("cat", math.floor(math.min(w, h) * 0.6)))
+            (title and U.textbox(title, 10, w - 2 * border - scale(6), { align = "center", bold = true, max_height = h - 2 * border - scale(6) }))
+                or (U.cats and U.icon("cat", math.floor(math.min(w, h) * 0.6)))
                 or (U.symbols and U.text("♥", 22))
                 or U.icon("book", math.floor(w * 0.4)),
         },
@@ -416,6 +441,21 @@ function U.grid(cells, columns, row_gap)
     if row then table.insert(vg, row) end
     return vg
 end
+
+-- Squared paper behind a whole page, like a notebook. Drawn once per
+-- repaint as plain lines, so it costs next to nothing.
+local GridPaper = WidgetContainer:extend{}
+function GridPaper:getSize() return self[1]:getSize() end
+function GridPaper:paintTo(bb, x, y)
+    local size = self[1]:getSize()
+    bb:paintRect(x, y, size.w, size.h, U.WHITE)
+    local step = scale(22)
+    local line = math.max(1, scale(1))
+    for gx = x + step, x + size.w - 1, step do bb:paintRect(gx, y, line, size.h, U.LIGHT) end
+    for gy = y + step, y + size.h - 1, step do bb:paintRect(x, gy, size.w, line, U.LIGHT) end
+    self[1]:paintTo(bb, x, y)
+end
+U.GridPaper = GridPaper
 
 ---------------------------------------------------------------------------
 -- Full-screen page. Subclasses provide buildBody(body_h) and may provide
@@ -502,14 +542,17 @@ function Page:refresh()
     else
         holder = CenterContainer:new{ dimen = Geom:new{ w = self.sw, h = body_h }, body }
     end
-    self[1] = FrameContainer:new{
-        background = U.WHITE, bordersize = 0, padding = 0, margin = 0,
+    -- A page may ask for squared paper behind it (usePaper()).
+    local paper = self.usePaper and self:usePaper()
+    local frame = FrameContainer:new{
+        background = (not paper) and U.WHITE or nil, bordersize = 0, padding = 0, margin = 0,
         VerticalGroup:new{
             align = "center",
             holder,
             CenterContainer:new{ dimen = Geom:new{ w = self.sw, h = footer_h }, footer },
         },
     }
+    self[1] = paper and GridPaper:new{ frame } or frame
     UIManager:setDirty(self, function() return "ui", self.dimen end)
 end
 

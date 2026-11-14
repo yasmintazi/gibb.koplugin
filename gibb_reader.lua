@@ -568,7 +568,9 @@ end
 
 function HighlightBar:build(w)
     local hl = self.plugin.ui.highlight
-    local col_w = math.floor(w / 5)
+    -- The AI button only appears when the Assistant plugin is running.
+    local assistant = self.plugin:findOther("assistant", "onAskAIQuestion")
+    local col_w = math.floor(w / (assistant and 6 or 5))
     local function tile(icon, label, on, action)
         return U.iconTile{
             icon = icon, label = label, on = on, plain = (on == nil), w = col_w, size = scale(32),
@@ -581,17 +583,32 @@ function HighlightBar:build(w)
             end,
         }
     end
-    return HorizontalGroup:new{
+    local row = HorizontalGroup:new{
         align = "top",
         tile("check", _("Saved"), true, nil),
-        tile("more", _("Style"), nil, function() self.show_menu(self.index) end),
-        tile("note", _("Note"), nil, function() hl:editNote(self.index) end),
-        tile("copy", _("Copy"), nil, function() Device.input.setClipboardText(self.text) end),
-        tile("trash", _("Undo"), nil, function()
-            hl:deleteHighlight(self.index)
-            UIManager:setDirty("all", "ui")
-        end),
     }
+    if assistant then
+        local text = self.text
+        table.insert(row, tile("sparkle", _("Ask AI"), nil, function()
+            -- Same steps the Assistant's own highlight-menu button takes.
+            if assistant.isConfigured and not assistant:isConfigured() then return end
+            require("ui/network/manager"):runWhenOnline(function()
+                UIManager:nextTick(function()
+                    if assistant.assistant_dialog then
+                        assistant.assistant_dialog:showAskDialog(text)
+                    end
+                end)
+            end)
+        end))
+    end
+    table.insert(row, tile("more", _("Style"), nil, function() self.show_menu(self.index) end))
+    table.insert(row, tile("note", _("Note"), nil, function() hl:editNote(self.index) end))
+    table.insert(row, tile("copy", _("Copy"), nil, function() Device.input.setClipboardText(self.text) end))
+    table.insert(row, tile("trash", _("Undo"), nil, function()
+        hl:deleteHighlight(self.index)
+        UIManager:setDirty("all", "ui")
+    end))
+    return row
 end
 
 function HighlightBar:onCloseWidget()

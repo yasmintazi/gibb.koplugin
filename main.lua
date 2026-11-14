@@ -35,6 +35,7 @@ local function defaults()
         name = "",
         symbols = true,
         cats = true,
+        critters = true,
         max_books = 3,
         max_authors = 5,
         max_reviews = 5,
@@ -52,7 +53,8 @@ local function defaults()
         auto_words = 5,
         rate_on_finish = true,
         airplane = false,
-        lib_view = "grid",
+        lib_view = "shelf",
+        home_style = "scrapbook",
         lib_sort = "recent",
         margins = {
             header = true,
@@ -99,6 +101,12 @@ function Plugin:loadSettings()
         settings.order = nil
         settings.version = 3
     end
+    -- The scrapbook home and the bookshelf became the default look.
+    if settings.version < 4 then
+        settings.home_style = "scrapbook"
+        settings.lib_view = "shelf"
+        settings.version = 4
+    end
     fill(settings, defaults())
     -- Keep the card order valid when cards are added in a newer version.
     local known, seen, order = {}, {}, {}
@@ -118,6 +126,7 @@ function Plugin:loadSettings()
     G_reader_settings:saveSetting(SETTINGS_KEY, settings)
     U.symbols = settings.symbols
     U.cats = settings.cats
+    U.critters = settings.critters
 end
 
 function Plugin:save()
@@ -388,6 +397,13 @@ local function findPlugin(ui, hook)
         end
     end
     return nil, enabled
+end
+
+-- Lets other parts of Gibb look up a running plugin by its folder name
+-- and a function it must have. Returns nil when it is not running.
+function Plugin:findOther(folder, method)
+    local ok, instance = pcall(findPlugin, self.ui, { folder = folder, method = method })
+    return ok and instance or nil
 end
 
 function Plugin:launch(app)
@@ -665,6 +681,23 @@ function Plugin:addToMainMenu(menu_items)
                     end)
                 end,
             },
+            {
+                text = _("Home page style"),
+                sub_item_table = {
+                    {
+                        text = _("Scrapbook (squared paper, notes and critters)"),
+                        radio = true,
+                        checked_func = function() return settings.home_style == "scrapbook" end,
+                        callback = function() settings.home_style = "scrapbook"; self:save() end,
+                    },
+                    {
+                        text = _("Cards (the original list of cards)"),
+                        radio = true,
+                        checked_func = function() return settings.home_style ~= "scrapbook" end,
+                        callback = function() settings.home_style = "cards"; self:save() end,
+                    },
+                },
+            },
             { text = _("Show or hide cards"), sub_item_table = card_toggles },
             { text = _("Arrange cards"), keep_menu_open = true, callback = function() self:arrangeCards() end },
             {
@@ -683,6 +716,7 @@ function Plugin:addToMainMenu(menu_items)
             },
             { text = _("App tiles"), sub_item_table = app_toggles },
             { text = _("New highlight quote"), sub_item_table = quote_choices },
+            self:toggle(_("Show my critters (pictures in the critters folder)"), "critters", function() U.critters = settings.critters end),
             self:toggle(_("Cat theme (paws, whiskers and fish)"), "cats", function() U.cats = settings.cats end),
             self:toggle(_("Cute symbols (♥ ✿ ★)"), "symbols", function() U.symbols = settings.symbols end),
             self:toggle(_("Open the dashboard when KOReader starts"), "open_on_start"),

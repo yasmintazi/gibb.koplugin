@@ -6,13 +6,16 @@ Every page takes a `plugin` (see main.lua) and asks it to open other pages,
 so the pages never need to know about each other.
 ]]
 
+local BottomContainer = require("ui/widget/container/bottomcontainer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
+local Geom = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
+local LeftContainer = require("ui/widget/container/leftcontainer")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -317,6 +320,12 @@ local DENSITIES = {
 }
 
 function Dashboard:buildBody(body_h)
+    if self:usePaper() then
+        local ok, built = pcall(self.buildScrapbook, self, body_h)
+        if ok and built then return built end
+        -- Fall back to the plain cards rather than show a broken page.
+        require("logger").warn("gibb: scrapbook home failed:", built)
+    end
     self.density = self.density or {}
     local room = body_h - scale(20)
     local vg
@@ -351,7 +360,34 @@ function cards.header(self, iw)
     local ok, level = pcall(function() return Device:getPowerDevice():getCapacity() end)
     if ok and level then line = line .. " · " .. level .. "%" end
     local size = self.compact and 18 or 20
-    local greeting = U.text(hello, size, { bold = true, max_width = iw - scale(34) })
+    -- Your critters sit either side of the greeting: the first picture on
+    -- the left, the second on the right.
+    local files = U.critters and U.critterFiles() or {}
+    local critter_h = scale(self.compact and 50 or 62)
+    local side_w = #files > 0 and math.floor(critter_h * 0.7) or 0
+    local text_w = iw - 2 * (side_w + scale(8))
+    local greeting = U.text(hello, size, { bold = true, max_width = text_w - scale(34) })
+    if #files > 0 then
+        local words = VerticalGroup:new{
+            align = "center",
+            greeting,
+            U.text(line, 13, { color = U.GRAY, max_width = text_w }),
+        }
+        local function side(path)
+            if not path then return HorizontalSpan:new{ width = side_w } end
+            local ok, picture = pcall(U.critter, path, critter_h, side_w)
+            if not ok then return HorizontalSpan:new{ width = side_w } end
+            return U.centered(picture, side_w, critter_h)
+        end
+        return HorizontalGroup:new{
+            align = "bottom",
+            side(files[2] or files[1]),
+            HorizontalSpan:new{ width = scale(8) },
+            U.centered(words, text_w, critter_h),
+            HorizontalSpan:new{ width = scale(8) },
+            side(files[2] and files[1] or nil),
+        }
+    end
     if cats then
         -- A little cat face sits beside the greeting.
         greeting = HorizontalGroup:new{
@@ -407,8 +443,9 @@ function cards.resume(self, iw)
     local cover_h = scale(self.compact and 48 or 58)
     local cover_w = math.floor(cover_h / 1.4)
     -- With the cat theme, a ball of yarn sits at the right of the card.
-    local yarn_w = U.cats and scale(30) or 0
-    local text_w = iw - cover_w - scale(10) - (U.cats and (yarn_w + scale(8)) or 0)
+    local yarn = U.cats and not (U.critters and #U.critterFiles() > 0)
+    local yarn_w = yarn and scale(30) or 0
+    local text_w = iw - cover_w - scale(10) - (yarn and (yarn_w + scale(8)) or 0)
     local percent = math.floor(e.percent * 100 + 0.5) .. "%"
     local bar_w = text_w - scale(44)
     local lines = VerticalGroup:new{
@@ -429,7 +466,7 @@ function cards.resume(self, iw)
         U.hspan(10),
         U.splitRow(lines, nil, text_w),
     }
-    if U.cats then
+    if yarn then
         table.insert(row, U.hspan(8))
         table.insert(row, U.icon("yarn", yarn_w))
     end
@@ -702,6 +739,251 @@ function cards.year(self, iw)
         U.text(string.format(_("%d of %d books, your yearly goal"), done, goal), 12, { color = U.GRAY, max_width = iw }),
     }, iw)
 end
+---------------------------------------------------------------------------
+-- Scrapbook home: squared paper, little labelled notes, your critters.
+---------------------------------------------------------------------------
+
+function Dashboard:usePaper()
+    return self.plugin.settings.home_style == "scrapbook" and self.pages[self.page] == 1
+end
+
+-- A small note: a tiny grey label (and an optional widget on its right)
+-- above the content. inner_w is the width inside the border.
+local NOTE_PAD = scale(7)
+local function note(label, content, inner_w, right)
+    return FrameContainer:new{
+        radius = scale(10), bordersize = U.BORDER, padding = NOTE_PAD, margin = 0, background = U.WHITE,
+        VerticalGroup:new{
+            align = "left",
+            U.splitRow(U.text(label, 10, { color = U.GRAY, max_width = inner_w }), right, inner_w),
+            U.vspan(3),
+            content,
+        },
+    }
+end
+
+local function shortTime(secs)
+    secs = tonumber(secs) or 0
+    if secs >= 3600 then return math.floor(secs / 3600 + 0.5) .. "h" end
+    return math.floor(secs / 60 + 0.5) .. "m"
+end
+
+function Dashboard:buildScrapbook(body_h)
+    local plugin, settings, data = self.plugin, self.plugin.settings, self.data
+    local s = data.stats
+    local W = self.sw - 2 * U.MARGIN
+    local gap = scale(8)
+    local edge = U.BORDER + NOTE_PAD
+    local files = U.critters and U.critterFiles() or {}
+    local vg = VerticalGroup:new{ align = "center" }
+    local function add(widget)
+        if #vg > 0 then table.insert(vg, VerticalSpan:new{ width = gap }) end
+        table.insert(vg, widget)
+    end
+
+    -- Time, date and battery
+    local clock = G_reader_settings:isTrue("twelve_hour_clock") and os.date("%I:%M %p") or os.date("%H:%M")
+    local left = clock .. " · " .. os.date("%d %b")
+    local name = settings.name
+    if type(name) == "string" and name ~= "" then left = name .. " · " .. left end
+    local battery = ""
+    pcall(function() battery = Device:getPowerDevice():getCapacity() .. "%" end)
+    add(U.splitRow(U.heading(U.deco("♥", left), 12, { color = U.GRAY, max_width = math.floor(W * 0.8) }),
+        U.text(battery, 12, { color = U.GRAY }), W))
+
+    -- Quote of the day, with a critter stamp beside it
+    local stamp_w = math.floor(W * 0.21)
+    local quote_inner = W - stamp_w - gap - 2 * edge
+    local item = data.highlight
+    local quote
+    if item then
+        local source = "— " .. (item.title or "")
+        if item.authors and item.authors ~= "" then source = source .. ", " .. item.authors end
+        quote = VerticalGroup:new{
+            align = "left",
+            U.tap(U.textbox("“" .. item.text .. "”", 14, quote_inner, { max_height = math.floor(self.sh * 0.105) }),
+                function() plugin:showHighlight(item) end),
+            U.vspan(2),
+            U.text(source, 11, { color = U.GRAY, max_width = quote_inner }),
+        }
+    else
+        quote = U.text(_("Highlight something and it shows up here"), 12, { color = U.GRAY, max_width = quote_inner })
+    end
+    local another = item and U.pill(_("Another"), function()
+        local ok, pick = pcall(D.pickHighlight, plugin.ui, settings, true)
+        if ok and pick then
+            data.highlight = pick
+            plugin:save()
+            self:refresh()
+        end
+    end, { size = 11, padv = 1, padh = 7 }) or nil
+    local quote_card = note(_("QUOTE OF THE DAY"), quote, quote_inner, another)
+    local stamp_h = math.max(quote_card:getSize().h, scale(70))
+    local stamp_iw, stamp_ih = stamp_w - 2 * U.BORDER, stamp_h - 2 * U.BORDER
+    local picture
+    if files[1] then
+        local ok, img = pcall(U.critter, files[1], stamp_ih - scale(6), stamp_iw - scale(6))
+        if ok then picture = img end
+    end
+    picture = picture or U.icon("cat", math.floor(math.min(stamp_iw, stamp_ih) * 0.7))
+    local stamp = FrameContainer:new{
+        radius = 0, bordersize = U.BORDER, padding = 0, margin = 0, background = U.WHITE,
+        U.centered(picture, stamp_iw, stamp_ih),
+    }
+    add(HorizontalGroup:new{ align = "top", quote_card, HorizontalSpan:new{ width = gap }, U.tap(stamp, function() plugin:showHighlights() end) })
+
+    -- Today and this month
+    if s then
+        local half = math.floor((W - gap) / 2)
+        local hi = half - 2 * edge
+        local today = VerticalGroup:new{
+            align = "left",
+            U.text(string.format(_("%d pages"), s.today_pages), 15, { bold = true, max_width = hi }),
+            U.text(string.format(_("%s read"), U.duration(s.today_time)), 11, { color = U.GRAY, max_width = hi }),
+            U.text(string.format(_("Streak %d days"), s.streak), 11, { color = U.GRAY, max_width = hi }),
+        }
+        local col = math.floor(hi / 3)
+        local function small(value, label)
+            return U.centered(VerticalGroup:new{
+                align = "center",
+                U.text(value, 15, { bold = true, max_width = col }),
+                U.text(label, 11, { color = U.GRAY, max_width = col }),
+            }, col)
+        end
+        local month = HorizontalGroup:new{
+            align = "top",
+            small(data.month_books or 0, _("books")),
+            small(shortTime(s.month_time), _("read")),
+            small(s.month_pages or 0, _("pages")),
+        }
+        add(HorizontalGroup:new{
+            align = "top",
+            note(_("TODAY"), today, hi),
+            HorizontalSpan:new{ width = gap },
+            note(os.date("%B"):upper(), month, hi),
+        })
+    end
+
+    -- Finish forecast for the book you are reading
+    local e = data.reading[1]
+    if e then
+        local fi = W - 2 * edge
+        self.forecast = self.forecast or {}
+        if self.forecast[e.file] == nil then
+            local ok, bs = pcall(D.bookStats, e)
+            self.forecast[e.file] = (ok and bs) or false
+        end
+        local bs = self.forecast[e.file]
+        local percent = math.floor(e.percent * 100 + 0.5) .. "%"
+        local daily = s and (s.week_time or 0) / 7 or 0
+        local when
+        local line2 = percent
+        if bs and bs.pages > 5 and e.pages and daily > 60 then
+            local remaining = (1 - e.percent) * e.pages * (bs.time / bs.pages)
+            when = os.time() + math.ceil(remaining / daily) * 86400
+            line2 = percent .. " · " .. string.format(_("at %s a day"), U.duration(daily))
+        end
+        local cover_h = scale(58)
+        local cover_w = math.floor(cover_h / 1.4)
+        local box_w = scale(46)
+        local text_w = fi - cover_w - box_w - scale(20)
+        local lines = VerticalGroup:new{
+            align = "left",
+            U.text(e.title, 14, { bold = true, max_width = text_w }),
+            U.text(line2, 11, { color = U.GRAY, max_width = text_w }),
+        }
+        local done = data.counts.finished_year or 0
+        if done > 0 then
+            local pace = math.floor(done / math.max(1, tonumber(os.date("%j"))) * 365 + 0.5)
+            table.insert(lines, U.text(string.format(_("On pace for %d books this year"), pace), 11, { color = U.GRAY, max_width = text_w }))
+        elseif not when then
+            table.insert(lines, U.text(_("Read a little more for a forecast"), 11, { color = U.GRAY, max_width = text_w }))
+        end
+        local datebox = FrameContainer:new{
+            radius = scale(6), bordersize = U.BORDER, padding = 0, margin = 0, background = U.WHITE,
+            VerticalGroup:new{
+                align = "center",
+                FrameContainer:new{
+                    bordersize = 0, padding = scale(1), margin = 0, background = U.BLACK,
+                    U.centered(U.text(when and os.date("%b", when):upper() or "···", 10, { bold = true, color = U.WHITE }), box_w - scale(2)),
+                },
+                U.centered(U.text(when and tostring(tonumber(os.date("%d", when))) or "?", 18, { bold = true }), box_w),
+            },
+        }
+        local row = HorizontalGroup:new{
+            align = "center",
+            U.centered(U.cover(e.file, cover_w, cover_h), cover_w, cover_h),
+            U.hspan(10),
+            U.splitRow(lines, datebox, fi - cover_w - scale(10)),
+        }
+        add(U.tap(note(_("FINISH FORECAST"), row, fi), function() plugin:openBook(e.file) end,
+            function() plugin:showBookPage(e.file) end))
+    end
+
+    -- App tiles keep their place at the bottom
+    local tiles
+    if settings.enabled.apps then
+        local ok, built = pcall(cards.apps, self, self:cardWidth())
+        if ok then tiles = built end
+    end
+
+    -- Whatever height is left goes to a critter on a pile of books and the
+    -- covers of what you finished this year.
+    local used = vg:getSize().h + gap + (tiles and (tiles:getSize().h + gap) or 0)
+    local bottom_h = math.max(scale(84), math.min(scale(210), body_h - scale(20) - used))
+    local critter_w = math.floor(W * 0.36)
+    local sitter
+    local sitter_file = files[2] or files[1]
+    if sitter_file then
+        local ok, img = pcall(U.critter, sitter_file, bottom_h - scale(30), critter_w)
+        if ok then sitter = img end
+    end
+    sitter = sitter or U.icon("cat", math.floor(math.min(critter_w, bottom_h - scale(30)) * 0.8))
+    local function book(width, color)
+        return FrameContainer:new{
+            bordersize = math.max(1, scale(1)), padding = 0, margin = 0, background = color,
+            HorizontalSpan:new{ width = width },
+            -- a span has no height, so give the frame one through padding
+            padding_top = scale(4), padding_bottom = scale(4),
+        }
+    end
+    local pile = VerticalGroup:new{
+        align = "center",
+        sitter,
+        book(math.floor(critter_w * 0.74), U.LIGHT),
+        book(math.floor(critter_w * 0.9), U.WHITE),
+        book(math.floor(critter_w * 0.66), U.GRAY),
+    }
+    local covers_inner = W - critter_w - gap - 2 * edge
+    local finished = data.year_covers or {}
+    local covers
+    if #finished > 0 then
+        local ch = math.max(scale(40), math.min(scale(84), bottom_h - scale(46)))
+        local cw = math.floor(ch / 1.45)
+        local cgap = scale(4)
+        local n = math.max(1, math.floor((covers_inner + cgap) / (cw + cgap)))
+        covers = HorizontalGroup:new{ align = "bottom" }
+        for i = 1, math.min(n, #finished) do
+            local f = finished[i]
+            if i > 1 then table.insert(covers, HorizontalSpan:new{ width = cgap }) end
+            table.insert(covers, U.tap(U.centered(U.cover(f.file, cw, ch, f.title), cw, ch),
+                function() plugin:showBookPage(f.file) end))
+        end
+    else
+        covers = U.textbox(_("Finish a book this year and its cover lands here."), 11, covers_inner, { color = U.GRAY })
+    end
+    local year_note = note(_("YEAR IN COVERS"), covers, covers_inner,
+        U.text(string.format(_("%d finished"), #finished), 11, { color = U.GRAY }))
+    add(HorizontalGroup:new{
+        align = "bottom",
+        U.centered(pile, critter_w),
+        HorizontalSpan:new{ width = gap },
+        year_note,
+    })
+    if tiles then add(tiles) end
+    return vg
+end
+
 V.Dashboard = Dashboard
 
 ---------------------------------------------------------------------------
@@ -904,7 +1186,9 @@ function Library:setup()
     local settings = self.plugin.settings
     self.filter = "all"
     self.sort = settings.lib_sort or "recent"
-    self.grid = settings.lib_view ~= "list"
+    self.view = settings.lib_view
+    if self.view ~= "grid" and self.view ~= "list" then self.view = "shelf" end
+    self.grid = self.view == "grid"
     self.query = ""
     self.scope = self.scope or {}
     self.books = D.index or D.getIndex(self.plugin.ui, settings) or {}
@@ -914,6 +1198,22 @@ end
 
 function Library:layout()
     local usable = self.sh - scale(60) - scale(96)
+    if self.view == "shelf" then
+        local full_w = self.sw - 2 * U.MARGIN
+        self.header_h = scale(96)
+        self.gap = scale(8)
+        self.cover_h = math.min(math.floor(self.sh * 0.17), scale(150))
+        self.cover_w = math.floor(self.cover_h / 1.45)
+        self.critter_h = math.floor(self.cover_h * 1.25)
+        self.critter_w = math.floor(self.critter_h * 0.6)
+        local shelf_h = self.critter_h + scale(5) + scale(12)
+        self.rows = math.max(1, math.floor((usable - self.header_h - scale(8)) / shelf_h))
+        local has_critters = U.critters and #U.critterFiles() > 0
+        local room = full_w - (has_critters and (self.critter_w + self.gap) or 0)
+        self.per_shelf = math.max(1, math.floor((room + self.gap) / (self.cover_w + self.gap)))
+        self.per_page = self.rows * self.per_shelf
+        return
+    end
     if self.grid then
         self.cols = 3
         self.gap = scale(10)
@@ -1056,6 +1356,10 @@ function Library:showOptions()
     UIManager:show(dialog)
 end
 
+-- The view button names the view it will switch to.
+local VIEW_NEXT = { shelf = "grid", grid = "list", list = "shelf" }
+local VIEW_LABEL = { shelf = _("Shelf"), grid = _("Grid"), list = _("List") }
+
 local function bookExtra(e, w)
     if e.state == "reading" then return U.progress(w, scale(6), e.percent) end
     if e.state == "finished" then
@@ -1082,9 +1386,10 @@ function Library:buildBody()
         HorizontalSpan:new{ width = gap },
         U.pill(_("Sort"), function() self:showOptions() end, { w = opt_w, padv = 6 }),
         HorizontalSpan:new{ width = gap },
-        U.pill(self.grid and _("List") or _("Grid"), function()
-            self.grid = not self.grid
-            self.plugin.settings.lib_view = self.grid and "grid" or "list"
+        U.pill(VIEW_LABEL[VIEW_NEXT[self.view]] or _("Shelf"), function()
+            self.view = VIEW_NEXT[self.view] or "shelf"
+            self.grid = self.view == "grid"
+            self.plugin.settings.lib_view = self.view
             self.plugin:save()
             self:layout()
             self.page = 1
@@ -1121,6 +1426,8 @@ function Library:buildBody()
         table.insert(vg, U.textbox(hint, 14, full_w, { align = "center", color = U.GRAY }))
         return vg
     end
+
+    if self.view == "shelf" then return self:buildShelves(vg, full_w) end
 
     local first = (self.page - 1) * self.per_page + 1
     local last = math.min(#self.list, first + self.per_page - 1)
@@ -1174,6 +1481,87 @@ function Library:buildBody()
     end
     return vg
 end
+-- Bookshelf view: the book in progress on top, then covers standing on
+-- shelves, with a critter sitting at the end of the first shelves.
+function Library:buildShelves(vg, full_w)
+    local plugin = self.plugin
+    local current
+    for i = 1, #self.books do
+        local e = self.books[i]
+        if e.state == "reading" and (not current or (e.last_read or 0) > (current.last_read or 0)) then current = e end
+    end
+    if current then
+        local ch = self.header_h - scale(8)
+        local cw = math.floor(ch / 1.45)
+        local tw = full_w - cw - scale(10)
+        local lines = VerticalGroup:new{
+            align = "left",
+            U.text(current.title, 16, { bold = true, max_width = tw }),
+            U.text(current.authors ~= "" and current.authors or " ", 12, { color = U.GRAY, max_width = tw }),
+        }
+        if current.description then
+            table.insert(lines, U.textbox(current.description, 11, tw, { color = U.GRAY, max_height = scale(30) }))
+        end
+        table.insert(lines, U.vspan(3))
+        local percent = U.text(math.floor(current.percent * 100 + 0.5) .. "%", 11, { color = U.GRAY })
+        table.insert(lines, HorizontalGroup:new{
+            align = "center",
+            percent,
+            U.hspan(6),
+            U.progress(tw - percent:getSize().w - scale(8), scale(6), current.percent),
+        })
+        local head = HorizontalGroup:new{
+            align = "center",
+            U.centered(U.cover(current.file, cw, ch, current.title), cw, ch),
+            U.hspan(10),
+            U.splitRow(lines, nil, tw),
+        }
+        table.insert(vg, 1, U.tap(head, function() plugin:openBook(current.file) end,
+            function() plugin:showBookPage(current.file) end))
+        table.insert(vg, 2, U.vspan(8))
+    end
+
+    local files = U.critters and U.critterFiles() or {}
+    local index = (self.page - 1) * self.per_page + 1
+    for shelf = 1, self.rows do
+        if index > #self.list then break end
+        local row = HorizontalGroup:new{ align = "bottom" }
+        local critter
+        if files[shelf] then
+            local ok, img = pcall(U.critter, files[shelf], self.critter_h, self.critter_w)
+            if ok then critter = img end
+        end
+        -- The first critter sits on the left, the next on the right, and so on.
+        if critter and shelf % 2 == 1 then
+            table.insert(row, critter)
+            table.insert(row, HorizontalSpan:new{ width = self.gap })
+        end
+        local placed = 0
+        while placed < self.per_shelf and index <= #self.list do
+            local e = self.list[index]
+            if placed > 0 then table.insert(row, HorizontalSpan:new{ width = self.gap }) end
+            table.insert(row, U.tap(U.centered(U.cover(e.file, self.cover_w, self.cover_h, e.title), self.cover_w, self.cover_h),
+                function() plugin:showBookPage(e.file) end,
+                function() plugin:openBook(e.file) end))
+            placed = placed + 1
+            index = index + 1
+        end
+        local row_w = row:getSize().w
+        if critter and shelf % 2 == 0 then
+            local free = full_w - row_w - critter:getSize().w
+            table.insert(row, HorizontalSpan:new{ width = math.max(self.gap, free) })
+            table.insert(row, critter)
+        end
+        table.insert(vg, BottomContainer:new{
+            dimen = Geom:new{ w = full_w, h = self.critter_h },
+            LeftContainer:new{ dimen = Geom:new{ w = full_w, h = row:getSize().h }, row },
+        })
+        table.insert(vg, U.Rule:new{ w = full_w, h = scale(5) })
+        table.insert(vg, U.vspan(12))
+    end
+    return vg
+end
+
 V.Library = Library
 
 ---------------------------------------------------------------------------

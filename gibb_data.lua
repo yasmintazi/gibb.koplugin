@@ -457,6 +457,18 @@ function D.stats()
             WHERE start_time >= %d GROUP BY id_book, page);]], today0))
     s.today_pages, s.today_time = s.today_pages or 0, s.today_time or 0
 
+    -- This month, and reading time over the last seven days (for the forecast).
+    local since = [[
+        SELECT count(*), sum(sum_duration) FROM (
+            SELECT sum(duration) AS sum_duration FROM page_stat
+            WHERE start_time >= %d GROUP BY id_book, page);]]
+    local now_t = os.date("*t")
+    local month0 = os.time{ year = now_t.year, month = now_t.month, day = 1, hour = 0, min = 0, sec = 0 }
+    s.month_pages, s.month_time = db.row(string.format(since, month0))
+    s.month_pages, s.month_time = s.month_pages or 0, s.month_time or 0
+    local _week_pages, week_time = db.row(string.format(since, today0 - 6 * 86400))
+    s.week_time = week_time or 0
+
     local per_day = {}
     local res = db.rows([[
         SELECT dates, count(*) FROM (
@@ -620,6 +632,18 @@ function D.dashboard(ui, settings, light)
         if i <= 4 then data.recent[i] = by_added[i] end
         if (by_added[i].added or 0) >= week_ago then data.added_week = data.added_week + 1 end
     end
+
+    -- Books finished this year (newest first) and this month.
+    local month = os.date("%Y-%m")
+    data.year_covers, data.month_books = {}, 0
+    for i = 1, #sorted do
+        local e = sorted[i]
+        if e.state == "finished" and type(e.modified) == "string" then
+            if e.modified:sub(1, 4) == year then data.year_covers[#data.year_covers + 1] = e end
+            if e.modified:sub(1, 7) == month then data.month_books = data.month_books + 1 end
+        end
+    end
+    table.sort(data.year_covers, function(a, b) return a.modified > b.modified end)
 
     local ok, stats = pcall(D.stats)
     data.stats = ok and stats or nil

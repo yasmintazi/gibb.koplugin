@@ -54,6 +54,20 @@ it in full or jump to it in the book.
 **Customisable**: show, hide and reorder every dashboard card, set your name
 and goals, choose the app tiles, and switch each in-book feature on or off.
 
+## Looks and critters
+
+- **Home page style**: *Scrapbook* (squared paper, small notes, a finish
+  forecast, your year in covers) or *Cards* (a plain list of cards). Change it
+  under Dashboard settings.
+- **Library views**: *Shelf* (covers standing on shelves), *Grid* and *List*.
+  The button at the top right of the library switches between them.
+- **Critters**: any PNG pictures in the `critters` folder inside the plugin are
+  shown around the dashboard and on the library shelves, in name order.
+  Pictures with a transparent background work best. Replace the ones that are
+  there with your own, or turn them off under Dashboard settings.
+- **Ask AI**: with the Assistant plugin running, the bar that appears after an
+  auto-highlight has an Ask AI button that sends it the highlighted text.
+
 ## Install
 
 1. Download this repository (Code, then Download ZIP) and unzip it.
