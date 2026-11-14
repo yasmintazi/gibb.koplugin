@@ -104,10 +104,10 @@ can turn it back on in Plugin management.
 |---|---|
 | Open the dashboard | Tools menu, **Gibb**, **Open dashboard**. It also opens when KOReader starts, unless you turn that off |
 | Change dashboard page | Swipe left or right, or tap the arrows |
-| Open the quick panel | Swipe down from the top edge |
+| Open the quick panel | Tap the top of the screen, or swipe down from the top edge |
 | Open the reader menu | Tap the bottom of a page |
 | Reach KOReader's text settings | Swipe up from the bottom, or **Text style** in the reader menu |
-| Reach KOReader's full menu | Tap the top of the page, or **More** in the quick panel |
+| Reach KOReader's full menu | **More** in the quick panel |
 | See a book's page | Tap a book on the dashboard or in the library |
 | Open a book directly | Hold a book on the dashboard or in the library |
 

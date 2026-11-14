@@ -1,0 +1,13 @@
+# Logs and device leftovers
+*.log
+*.zip
+*.bak
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor folders
+.vscode/
+.idea/

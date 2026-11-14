@@ -630,6 +630,19 @@ function R.attach(plugin)
         end
     end
 
+    -- Tap at the top: the same quick panel. KOReader's full menu stays one
+    -- tap away behind "More".
+    if menu and menu.onTapShowMenu then
+        local original_tap = menu.onTapShowMenu
+        menu.onTapShowMenu = function(m, ges, ...)
+            if plugin.settings.quick_panel_tap then
+                plugin:showQuickPanel()
+                return true
+            end
+            return original_tap(m, ges, ...)
+        end
+    end
+
     if not ui.document then return end
 
     -- Tap at the bottom: reader menu instead of the settings strip.

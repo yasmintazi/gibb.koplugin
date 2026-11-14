@@ -45,6 +45,7 @@ local function defaults()
         open_on_start = true,
         reader_menu = true,
         quick_panel = true,
+        quick_panel_tap = true,
         auto_highlight = true,
         auto_words = 5,
         rate_on_finish = true,
@@ -627,6 +628,7 @@ function Plugin:addToMainMenu(menu_items)
         sub_item_table = {
             self:toggle(_("Reader menu when tapping the bottom"), "reader_menu"),
             self:toggle(_("Quick panel when swiping down from the top"), "quick_panel"),
+            self:toggle(_("Quick panel when tapping the top"), "quick_panel_tap"),
             self:toggle(_("Auto-highlight long selections"), "auto_highlight"),
             {
                 text_func = function()
