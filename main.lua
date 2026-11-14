@@ -427,6 +427,37 @@ function Plugin:launch(app)
 end
 
 ---------------------------------------------------------------------------
+-- Updates through Storefront
+---------------------------------------------------------------------------
+
+local HOME_OWNER, HOME_REPO = "yasmintazi", "gibb.koplugin"
+
+-- Storefront can follow any GitHub repository, but this version of it has no
+-- button for linking a plugin by hand. This asks Storefront to link Gibb to
+-- its own repository, using Storefront's own function for it.
+function Plugin:linkToStorefront()
+    local ok, err = pcall(function()
+        local storefront = findPlugin(self.ui, APP_HOOKS.storefront)
+        if not storefront or type(storefront.verifyAndMatchPluginWithManualRepo) ~= "function" then
+            UIManager:show(InfoMessage:new{
+                text = _("Storefront is not running, or this version of it cannot link a plugin to a repository."),
+            })
+            return
+        end
+        local dirname = (U.plugin_dir or ""):gsub("/+$", ""):match("([^/]+)$") or "gibb.koplugin"
+        local version
+        pcall(function() version = dofile(U.plugin_dir .. "/_meta.lua").version end)
+        self:closeAll()
+        storefront:verifyAndMatchPluginWithManualRepo(
+            { dirname = dirname, name = "Gibb", version = version }, HOME_OWNER, HOME_REPO)
+    end)
+    if not ok then
+        logger.warn("gibb: linking to Storefront failed:", err)
+        UIManager:show(InfoMessage:new{ text = _("Could not link to Storefront:") .. "\n" .. tostring(err) })
+    end
+end
+
+---------------------------------------------------------------------------
 -- Aleph: both plugins replace the same menus, so only one should be on
 ---------------------------------------------------------------------------
 
@@ -653,6 +684,12 @@ function Plugin:addToMainMenu(menu_items)
                 })
             end)
         end,
+    }
+
+    items[#items + 1] = {
+        text = _("Get updates through Storefront"),
+        keep_menu_open = true,
+        callback = function() self:linkToStorefront() end,
     }
 
     menu_items.gibb = {

@@ -67,6 +67,19 @@ and goals, choose the app tiles, and switch each in-book feature on or off.
 Check that `koreader/plugins/gibb.koplugin/main.lua` exists, with no second
 `gibb.koplugin` folder nested inside.
 
+## Updating
+
+If you use the [Storefront](https://github.com/ultimatejimmy/storefront.koplugin)
+plugin, Gibb can be updated from the device:
+
+1. Turn Wi-Fi on.
+2. Open the tools menu, **Gibb**, **Get updates through Storefront**.
+3. Storefront confirms the link and from then on lists Gibb with your other
+   installed plugins and offers new releases.
+
+Without Storefront, download the newest release, replace the
+`gibb.koplugin` folder, and restart KOReader. Your settings are kept.
+
 ## Requirements
 
 Turn these KOReader plugins on (they ship with KOReader):
