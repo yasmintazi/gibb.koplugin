@@ -509,7 +509,7 @@ end
 function MarginsSettings:build(w)
     local m = self.plugin.settings.margins
     local vg = VerticalGroup:new{ align = "center" }
-    table.insert(vg, U.text(U.deco("✿", _("Header and footer")), 17, { bold = true }))
+    table.insert(vg, U.heading(U.deco("✿", _("Header and footer")), 17, { bold = true }))
     table.insert(vg, U.vspan(8))
 
     local function row(label, value, action)

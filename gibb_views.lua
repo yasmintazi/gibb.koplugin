@@ -90,7 +90,7 @@ end
 function RateDialog:build(w)
     local vg = VerticalGroup:new{ align = "center" }
     local heading = self.finishing and U.deco("♥", _("You finished it")) or _("Rate this book")
-    table.insert(vg, U.text(heading, 18, { bold = true, max_width = w }))
+    table.insert(vg, U.heading(heading, 18, { bold = true, max_width = w }))
     local sub = self.e.title
     if self.e.authors ~= "" then sub = sub .. " · " .. self.e.authors end
     table.insert(vg, U.text(sub, 13, { color = U.GRAY, max_width = w }))
@@ -279,7 +279,11 @@ function Dashboard:navLabel()
     return string.format("%s · %d/%d", V.PAGE_NAMES[self.pages[self.page]], self.page, #self.pages)
 end
 
-function Dashboard:buildBody()
+function Dashboard:pageName()
+    return V.PAGE_NAMES[self.pages[self.page]]
+end
+
+function Dashboard:buildCards(gap)
     local settings = self.plugin.settings
     local iw = self:cardWidth()
     local page_no = self.pages[self.page]
@@ -289,7 +293,7 @@ function Dashboard:buildBody()
         if card and card.page == page_no and settings.enabled[card.id] and cards[card.id] then
             local ok, widget = pcall(cards[card.id], self, iw)
             if ok and widget then
-                if #vg > 0 then table.insert(vg, U.vspan(9)) end
+                if #vg > 0 then table.insert(vg, U.vspan(gap)) end
                 table.insert(vg, widget)
             elseif not ok then
                 require("logger").warn("gibb: card failed:", card.id, widget)
@@ -302,23 +306,64 @@ function Dashboard:buildBody()
     return vg
 end
 
+-- Screens differ in height, so the page is built roomy first and then
+-- tightened step by step until it fits between the top edge and the footer.
+local DENSITIES = {
+    { gap = 9, compact = false },
+    { gap = 6, compact = false },
+    { gap = 6, compact = true },
+    { gap = 4, compact = true },
+    { gap = 2, compact = true },
+}
+
+function Dashboard:buildBody(body_h)
+    self.density = self.density or {}
+    local room = body_h - scale(20)
+    local vg
+    for level = self.density[self.page] or 1, #DENSITIES do
+        if vg and vg.free then vg:free() end
+        self.compact = DENSITIES[level].compact
+        U.compact = self.compact
+        local ok, built = pcall(self.buildCards, self, DENSITIES[level].gap)
+        U.compact = false
+        if not ok then error(built, 0) end
+        vg = built
+        -- Remember what fitted, so redrawing this page does not start over.
+        self.density[self.page] = level
+        if vg:getSize().h <= room then break end
+    end
+    return vg
+end
+
 function cards.header(self, iw)
     local hour = tonumber(os.date("%H"))
     local hello
-    if hour < 5 then hello = _("Cosy night reading")
-    elseif hour < 12 then hello = _("Good morning")
+    local cats = U.cats
+    if hour < 5 then hello = cats and _("Night prowl") or _("Cosy night reading")
+    elseif hour < 12 then hello = cats and _("Good meowning") or _("Good morning")
     elseif hour < 18 then hello = _("Good afternoon")
     else hello = _("Good evening") end
     local name = self.plugin.settings.name
     if type(name) == "string" and name ~= "" then hello = hello .. ", " .. name end
-    if U.symbols then hello = hello .. " ♥" end
+    if U.symbols and not cats then hello = hello .. " ♥" end
     local clock = G_reader_settings:isTrue("twelve_hour_clock") and os.date("%I:%M %p") or os.date("%H:%M")
     local line = os.date("%A %d %B") .. " · " .. clock
     local ok, level = pcall(function() return Device:getPowerDevice():getCapacity() end)
     if ok and level then line = line .. " · " .. level .. "%" end
+    local size = self.compact and 18 or 20
+    local greeting = U.text(hello, size, { bold = true, max_width = iw - scale(34) })
+    if cats then
+        -- A little cat face sits beside the greeting.
+        greeting = HorizontalGroup:new{
+            align = "center",
+            greeting,
+            HorizontalSpan:new{ width = scale(8) },
+            U.icon("cat", scale(size + 4)),
+        }
+    end
     return VerticalGroup:new{
         align = "center",
-        U.text(hello, 20, { bold = true, max_width = iw }),
+        greeting,
         U.text(line, 13, { color = U.GRAY, max_width = iw }),
     }
 end
@@ -334,7 +379,7 @@ function cards.books(self, iw)
     -- Kept small so the Home page has room for other cards.
     local gap = scale(10)
     local item_w = math.floor((iw - (n - 1) * gap) / n)
-    local cover_h = math.min(math.floor(item_w * 1.45), math.floor(self.sh * 0.115))
+    local cover_h = math.min(math.floor(item_w * 1.45), math.floor(self.sh * (self.compact and 0.095 or 0.115)))
     local hg = HorizontalGroup:new{ align = "top" }
     for i = 1, math.min(n, #list) do
         local e = list[i]
@@ -359,14 +404,16 @@ end
 function cards.resume(self, iw)
     local e = self.data.reading[1]
     if not e then return nil end
-    local cover_h = scale(58)
+    local cover_h = scale(self.compact and 48 or 58)
     local cover_w = math.floor(cover_h / 1.4)
-    local text_w = iw - cover_w - scale(10)
+    -- With the cat theme, a ball of yarn sits at the right of the card.
+    local yarn_w = U.cats and scale(30) or 0
+    local text_w = iw - cover_w - scale(10) - (U.cats and (yarn_w + scale(8)) or 0)
     local percent = math.floor(e.percent * 100 + 0.5) .. "%"
     local bar_w = text_w - scale(44)
     local lines = VerticalGroup:new{
         align = "left",
-        U.text(U.deco("♥", _("Continue reading")), 12, { color = U.GRAY, max_width = text_w }),
+        U.heading(U.deco("♥", _("Continue reading")), 12, { color = U.GRAY, max_width = text_w }),
         U.text(e.title, 15, { bold = true, max_width = text_w }),
         U.vspan(3),
         HorizontalGroup:new{
@@ -382,6 +429,10 @@ function cards.resume(self, iw)
         U.hspan(10),
         U.splitRow(lines, nil, text_w),
     }
+    if U.cats then
+        table.insert(row, U.hspan(8))
+        table.insert(row, U.icon("yarn", yarn_w))
+    end
     return U.tap(U.card(nil, row, iw), function() self.plugin:openBook(e.file) end)
 end
 
@@ -422,17 +473,18 @@ function cards.today(self, iw)
             { U.duration(s.today_time), _("reading") },
             { s.streak, _("day streak") },
         }, iw),
-        U.vspan(6),
+        U.vspan(self.compact and 3 or 6),
         U.progress(math.floor(iw * 0.86), scale(8), s.today_pages / math.max(1, goal)),
         U.vspan(2),
     }
     local caption
     if s.today_pages >= goal then
-        caption = U.deco("★", string.format(_("Daily goal of %d pages reached"), goal))
+        local cheer = U.cats and _("Purr-fect! Daily goal of %d pages reached") or _("Daily goal of %d pages reached")
+        caption = U.deco("★", string.format(cheer, goal))
     else
         caption = string.format(_("%d of %d pages, your daily goal"), s.today_pages, goal)
     end
-    table.insert(vg, U.text(caption, 12, { color = U.GRAY, max_width = iw }))
+    table.insert(vg, U.heading(caption, 12, { color = U.GRAY, max_width = iw }))
     return U.card(title, vg, iw)
 end
 
@@ -548,7 +600,7 @@ function cards.highlight(self, iw)
     if item.authors and item.authors ~= "" then source = source .. " · " .. item.authors end
     -- A few lines only; tapping the quote shows it in full.
     local quote = U.tap(U.textbox("“" .. item.text .. "”", 14, iw, {
-        align = "center", max_height = math.floor(self.sh * 0.085),
+        align = "center", max_height = math.floor(self.sh * (self.compact and 0.06 or 0.085)),
     }), function() self.plugin:showHighlight(item) end)
     local gap = scale(8)
     return U.card(title, VerticalGroup:new{
@@ -1225,7 +1277,7 @@ function Highlights:buildBody()
     local iw = self:cardWidth()
     local full_w = iw + 2 * (U.BORDER + U.PAD)
     local vg = VerticalGroup:new{ align = "center" }
-    table.insert(vg, U.text(U.deco("✿", _("Highlights")), 17, { bold = true }))
+    table.insert(vg, U.heading(U.deco("✿", _("Highlights")), 17, { bold = true }))
     table.insert(vg, U.vspan(6))
     local chips = {}
     local function chip(id, label)

@@ -30,6 +30,8 @@ local Screen = Device.screen
 
 local U = {
     symbols = true,     -- set from settings: show the little hearts and flowers
+    cats = true,        -- set from settings: paws, whiskers and fish
+    compact = false,    -- set briefly by a page that is short of room
     plugin_dir = nil,   -- set by main.lua
     BLACK = Blitbuffer.COLOR_BLACK,
     WHITE = Blitbuffer.COLOR_WHITE,
@@ -47,8 +49,33 @@ function U.face(size) return Font:getFace("cfont", size) end
 
 -- "♥ Title" when symbols are on, plain "Title" when they are off.
 function U.deco(sym, text)
-    if U.symbols then return sym .. " " .. text end
+    if U.symbols or U.cats then return sym .. " " .. text end
     return text
+end
+
+-- With the cat theme on, the little symbols become drawn cat things.
+local CAT_ICONS = { ["✿"] = "paw", ["♥"] = "cat", ["★"] = "fish" }
+
+-- A line of text that may start with one of the symbols above. Use this
+-- wherever U.deco() text is shown, so the cat theme can swap the symbol.
+function U.heading(text, size, o)
+    o = o or {}
+    text = tostring(text or "")
+    local sym, rest = text:match("^(%S+) (.+)$")
+    local icon = sym and CAT_ICONS[sym]
+    if icon and U.cats then
+        local icon_size = scale(math.floor((size or 15) * 1.1))
+        local opts = { bold = o.bold, color = o.color }
+        if o.max_width then opts.max_width = o.max_width - icon_size - scale(5) end
+        return HorizontalGroup:new{
+            align = "center",
+            U.icon(icon, icon_size),
+            HorizontalSpan:new{ width = scale(5) },
+            U.text(rest, size, opts),
+        }
+    end
+    if icon and not U.symbols then text = rest end
+    return U.text(text, size, o)
 end
 
 function U.stars(n)
@@ -120,17 +147,19 @@ function U.card(title, content, inner_w, o)
     o = o or {}
     local vg = VerticalGroup:new{ align = "center" }
     if title then
-        table.insert(vg, U.text(title, 15, { bold = true, max_width = inner_w }))
-        table.insert(vg, U.vspan(5))
+        table.insert(vg, U.heading(title, U.compact and 14 or 15, { bold = true, max_width = inner_w }))
+        table.insert(vg, U.vspan(U.compact and 2 or 5))
     end
     table.insert(vg, content)
+    -- o.slim: less space above and below, for one-line cards.
+    -- U.compact: the page is short of room, so every card tightens up.
+    local pad_v = (o.slim and scale(4)) or (U.compact and scale(5)) or nil
     return FrameContainer:new{
         radius = scale(12),
         bordersize = U.BORDER,
         padding = U.PAD,
-        -- o.slim: less space above and below, for one-line cards.
-        padding_top = o.slim and scale(4) or nil,
-        padding_bottom = o.slim and scale(4) or nil,
+        padding_top = pad_v,
+        padding_bottom = pad_v,
         margin = 0,
         background = U.WHITE,
         U.centered(vg, inner_w),
@@ -340,7 +369,9 @@ function U.cover(file, w, h)
         radius = scale(6), bordersize = border, padding = 0, margin = 0, background = U.WHITE,
         CenterContainer:new{
             dimen = Geom:new{ w = w - 2 * border, h = h - 2 * border },
-            U.symbols and U.text("♥", 22) or U.icon("book", math.floor(w * 0.4)),
+            (U.cats and U.icon("cat", math.floor(math.min(w, h) * 0.6)))
+                or (U.symbols and U.text("♥", 22))
+                or U.icon("book", math.floor(w * 0.4)),
         },
     }
 end
@@ -426,7 +457,24 @@ function Page:buildFooter()
         table.insert(hg, U.pill("‹", function() self:onPrevPage() end, { w = side, size = 18 }))
         table.insert(hg, HorizontalSpan:new{ width = gap })
     end
-    table.insert(hg, U.centered(U.text(label, 14, { max_width = mid_w }), mid_w))
+    local n = self:pageCount()
+    local middle
+    if U.cats and paged and n <= 6 and self.pageName then
+        -- Paw prints for pages: a filled paw marks the one you are on.
+        local paw = scale(15)
+        middle = HorizontalGroup:new{
+            align = "center",
+            U.text(self:pageName(), 14, { max_width = mid_w - n * (paw + scale(4)) - scale(8) }),
+            HorizontalSpan:new{ width = scale(8) },
+        }
+        for i = 1, n do
+            if i > 1 then table.insert(middle, HorizontalSpan:new{ width = scale(4) }) end
+            table.insert(middle, U.icon(i == self.page and "paw" or "paw-o", paw))
+        end
+    else
+        middle = U.text(label, 14, { max_width = mid_w })
+    end
+    table.insert(hg, U.centered(middle, mid_w))
     if paged then
         table.insert(hg, HorizontalSpan:new{ width = gap })
         table.insert(hg, U.pill("›", function() self:onNextPage() end, { w = side, size = 18 }))

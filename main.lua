@@ -34,6 +34,7 @@ local function defaults()
     return {
         name = "",
         symbols = true,
+        cats = true,
         max_books = 3,
         max_authors = 5,
         max_reviews = 5,
@@ -116,6 +117,7 @@ function Plugin:loadSettings()
     self.settings = settings
     G_reader_settings:saveSetting(SETTINGS_KEY, settings)
     U.symbols = settings.symbols
+    U.cats = settings.cats
 end
 
 function Plugin:save()
@@ -289,7 +291,9 @@ function Plugin:showMarginsSettings()
     guarded("margins", function() UIManager:show(R.MarginsSettings:new{ plugin = self }) end)
 end
 
--- Opens a book, optionally jumping to a highlight in it.
+-- Opens a book, optionally jumping to a highlight in it. Passing true as
+-- the "seamless" flag asks KOReader not to show its "Opening file" notice
+-- with the full path.
 function Plugin:openBook(file, item)
     self:closeAll()
     local function jump()
@@ -312,10 +316,10 @@ function Plugin:openBook(file, item)
             if ui.document.file == file then
                 jump()
             else
-                ui:switchDocument(file, false, jump)
+                ui:switchDocument(file, true, jump)
             end
         else
-            require("apps/reader/readerui"):showReader(file, nil, false, nil, jump)
+            require("apps/reader/readerui"):showReader(file, nil, true, nil, jump)
         end
     end)
 end
@@ -679,6 +683,7 @@ function Plugin:addToMainMenu(menu_items)
             },
             { text = _("App tiles"), sub_item_table = app_toggles },
             { text = _("New highlight quote"), sub_item_table = quote_choices },
+            self:toggle(_("Cat theme (paws, whiskers and fish)"), "cats", function() U.cats = settings.cats end),
             self:toggle(_("Cute symbols (♥ ✿ ★)"), "symbols", function() U.symbols = settings.symbols end),
             self:toggle(_("Open the dashboard when KOReader starts"), "open_on_start"),
         },

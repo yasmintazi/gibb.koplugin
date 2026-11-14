@@ -142,8 +142,9 @@ Gibb adds these actions to KOReader's gesture manager (top menu, gear icon,
 Tools menu, **Gibb**:
 
 - **Dashboard settings**: your name, show or hide cards, arrange cards, books
-  shown on Home, daily page goal, yearly book goal, app tiles, the little
-  symbols (♥ ✿ ★), and opening at startup.
+  shown on Home, daily page goal, yearly book goal, app tiles, how often the
+  highlight quote changes, the cat theme (paws, whiskers and fish in place of
+  the ♥ ✿ ★ symbols), and opening at startup.
 - **In-book settings**: reader menu, quick panel, auto-highlight and how many
   words count as long, the finish prompt, header and footer.
 - **Rescan library folder**: run this after adding books.
