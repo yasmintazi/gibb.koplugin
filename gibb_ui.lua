@@ -388,23 +388,30 @@ function Ring:paintTo(bb, x, y)
     local limit = frac * 2 * math.pi
     for py = 0, d - 1 do
         local dy = py + 0.5 - r_out
-        local run_x, run_c
+        -- Shades are tracked as plain numbers (0 = nothing, 1 = grey track,
+        -- 2 = black arc). Comparing KOReader's colour objects with "no
+        -- colour" is an error, which is what broke this before.
+        local run_x, run_shade = 0, 0
         for px = 0, d - 1 do
             local dx = px + 0.5 - r_out
             local dist2 = dx * dx + dy * dy
-            local c
+            local shade = 0
             if dist2 <= r_out * r_out and dist2 >= r_in * r_in then
                 local angle = math.atan2(dx, -dy)
                 if angle < 0 then angle = angle + 2 * math.pi end
-                c = (frac > 0 and angle <= limit) and U.BLACK or U.LIGHT
+                shade = (frac > 0 and angle <= limit) and 2 or 1
             end
             -- Paint in runs of the same shade, not pixel by pixel.
-            if c ~= run_c then
-                if run_c then bb:paintRect(x + run_x, y + py, px - run_x, 1, run_c) end
-                run_x, run_c = px, c
+            if shade ~= run_shade then
+                if run_shade ~= 0 then
+                    bb:paintRect(x + run_x, y + py, px - run_x, 1, run_shade == 2 and U.BLACK or U.LIGHT)
+                end
+                run_x, run_shade = px, shade
             end
         end
-        if run_c then bb:paintRect(x + run_x, y + py, d - run_x, 1, run_c) end
+        if run_shade ~= 0 then
+            bb:paintRect(x + run_x, y + py, d - run_x, 1, run_shade == 2 and U.BLACK or U.LIGHT)
+        end
     end
     if self.label then
         local text = TextWidget:new{ text = self.label, face = U.face(self.label_size or 13), bold = true }
