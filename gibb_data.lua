@@ -239,6 +239,7 @@ end
 function D.refreshRecent(ui)
     if not D.index then return end
     local times, order = historyTimes()
+    local highlights_changed = false
     for i = 1, math.min(#order, D.RECENT) do
         local file = order[i]
         local ok, e = pcall(D.readBook, ui, file)
@@ -246,15 +247,19 @@ function D.refreshRecent(ui)
             e.last_read = times[file]
             local old = D.by_file[file]
             if old then
+                if (old.n_highlights or 0) ~= (e.n_highlights or 0) then highlights_changed = true end
                 for k in pairs(old) do old[k] = nil end
                 for k, v in pairs(e) do old[k] = v end
             else
+                if (e.n_highlights or 0) > 0 then highlights_changed = true end
                 D.index[#D.index + 1] = e
                 D.by_file[file] = e
             end
         end
     end
-    D.hl_cache = nil
+    -- The gathered highlights stay in memory until a book gains or loses
+    -- one, so picking a new quote does not re-read every book each time.
+    if highlights_changed then D.hl_cache = nil end
 end
 
 function D.getIndex(ui, settings)
@@ -369,12 +374,17 @@ function D.allHighlights(ui)
     return all
 end
 
--- One highlight for the dashboard card. Chosen once a day and remembered,
--- so the sidecars are not re-read every time the dashboard opens.
+-- One highlight for the dashboard card. It is remembered and swapped for a
+-- new one once settings.hl_every minutes have passed (0 = every time the
+-- dashboard opens). The check happens when the dashboard is drawn, so no
+-- timer runs in the background.
 function D.pickHighlight(ui, settings, another)
-    local today = os.date("%Y-%m-%d")
+    local now = os.time()
     local pick = settings.hl_pick
-    if not another and type(pick) == "table" and pick.date == today and type(pick.item) == "table"
+    local every = (tonumber(settings.hl_every) or 30) * 60
+    if not another and type(pick) == "table" and type(pick.item) == "table"
+        and type(pick.time) == "number" and every > 0
+        and now >= pick.time and now - pick.time < every
         and lfs.attributes(pick.item.file or "", "mode") == "file" then
         return pick.item
     end
@@ -384,7 +394,16 @@ function D.pickHighlight(ui, settings, another)
         return nil
     end
     local item = all[math.random(#all)]
-    settings.hl_pick = { date = today, item = item }
+    -- Avoid showing the same quote twice in a row.
+    local previous = type(pick) == "table" and type(pick.item) == "table" and pick.item.text
+    if #all > 1 and previous then
+        local tries = 0
+        while item.text == previous and tries < 8 do
+            item = all[math.random(#all)]
+            tries = tries + 1
+        end
+    end
+    settings.hl_pick = { time = now, item = item }
     return item
 end
 

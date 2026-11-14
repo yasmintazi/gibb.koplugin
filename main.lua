@@ -39,6 +39,7 @@ local function defaults()
         max_reviews = 5,
         goal = 30,
         year_goal = 24,
+        hl_every = 30,
         enabled = enabled,
         order = order,
         apps = { zlibrary = true, ao3 = true, storefront = true, crossword = true },
@@ -582,6 +583,27 @@ function Plugin:addToMainMenu(menu_items)
         }
     end
 
+    -- How often the highlight card swaps its quote. Checked when the
+    -- dashboard is drawn; nothing runs in between.
+    local quote_choices = {}
+    for _i, choice in ipairs({
+        { 0, _("Every time the dashboard opens") },
+        { 10, _("Every 10 minutes") },
+        { 30, _("Every 30 minutes") },
+        { 60, _("Every hour") },
+        { 1440, _("Once a day") },
+    }) do
+        quote_choices[#quote_choices + 1] = {
+            text = choice[2],
+            radio = true,
+            checked_func = function() return settings.hl_every == choice[1] end,
+            callback = function()
+                settings.hl_every = choice[1]
+                self:save()
+            end,
+        }
+    end
+
     local book_counts = {}
     for n = 2, 4 do
         book_counts[#book_counts + 1] = {
@@ -656,6 +678,7 @@ function Plugin:addToMainMenu(menu_items)
                 callback = function(touchmenu) self:spin(_("Yearly book goal"), "year_goal", 1, 500, touchmenu) end,
             },
             { text = _("App tiles"), sub_item_table = app_toggles },
+            { text = _("New highlight quote"), sub_item_table = quote_choices },
             self:toggle(_("Cute symbols (♥ ✿ ★)"), "symbols", function() U.symbols = settings.symbols end),
             self:toggle(_("Open the dashboard when KOReader starts"), "open_on_start"),
         },
